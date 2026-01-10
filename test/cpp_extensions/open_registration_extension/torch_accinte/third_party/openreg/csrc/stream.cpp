@@ -65,7 +65,7 @@ struct orStream {
   }
 };
 
-orError_t accinte::addTaskToStream(
+orError_t openreg::addTaskToStream(
     orStream_t stream,
     std::function<void()> task) {
   if (!stream)
@@ -128,7 +128,7 @@ orError_t orEventRecord(orEvent_t event, orStream_t stream) {
     event_impl->cv.notify_all();
   };
 
-  return accinte::addTaskToStream(stream, record_task);
+  return openreg::addTaskToStream(stream, record_task);
 }
 
 orError_t orEventSynchronize(orEvent_t event) {
@@ -218,7 +218,7 @@ orError_t orStreamCreate(orStream_t* stream) {
 orError_t orStreamGetPriority(
     [[maybe_unused]] orStream_t stream,
     int* priority) {
-  // Since AccInte has only one priority level, the following code
+  // Since OpenReg has only one priority level, the following code
   // returns 0 directly for convenience.
   *priority = 0;
 
@@ -275,7 +275,7 @@ orError_t orStreamWaitEvent(orStream_t stream, orEvent_t event, unsigned int) {
     event_impl->cv.wait(lock, [&] { return event_impl->completed.load(); });
   };
 
-  return accinte::addTaskToStream(stream, wait_task);
+  return openreg::addTaskToStream(stream, wait_task);
 }
 
 orError_t orDeviceGetStreamPriorityRange(
@@ -285,7 +285,7 @@ orError_t orDeviceGetStreamPriorityRange(
     return orErrorUnknown;
   }
 
-  // AccInte priority levels are 0 and 1
+  // OpenReg priority levels are 0 and 1
   *leastPriority = 0;
   *greatestPriority = 1;
   return orSuccess;

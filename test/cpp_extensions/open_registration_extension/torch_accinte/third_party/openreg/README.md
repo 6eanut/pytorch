@@ -1,8 +1,8 @@
-# AccInte: An Accelerator Backend that Simulates CUDA Behavior on a CPU
+# OpenReg: An Accelerator Backend that Simulates CUDA Behavior on a CPU
 
 ## Introduction
 
-AccInte is a C++ backend library that simulates the behavior of a CUDA-like device on a CPU. Its core objective is **not to accelerate computation or improve performance**, but rather to **simulate modern CUDA programming, enabling developers to prototype and test in an environment without actual GPU hardware**. The current design principles are as follows:
+OpenReg is a C++ backend library that simulates the behavior of a CUDA-like device on a CPU. Its core objective is **not to accelerate computation or improve performance**, but rather to **simulate modern CUDA programming, enabling developers to prototype and test in an environment without actual GPU hardware**. The current design principles are as follows:
 
 * **API Consistency**: Provide an interface consistent with the CUDA Runtime API, allowing upper-level applications (like PyTorch's `PrivateUse1` backend) to switch and test seamlessly.
 * **Functional Consistency**: Provide behavior consistent with the CUDA Runtime, such as memory isolation, device context management, etc.
@@ -13,31 +13,31 @@ AccInte is a C++ backend library that simulates the behavior of a CUDA-like devi
 The project's code is organized with a clear structure and separation of responsibilities:
 
 ```text
-accinte/
-├── README.md               # Comprehensive introduction of AccInte.
-├── CMakeLists.txt          # Top-level CMake build script, used to compile and generate libaccinte.so
+openreg/
+├── README.md               # Comprehensive introduction of OpenReg.
+├── CMakeLists.txt          # Top-level CMake build script, used to compile and generate libopenreg.so
 ├── cmake/
 │   └── GTestTargets.cmake  # Utils of fetching GoogleTest.
 ├── include/
-│   ├── accinte.h           # Public API header file, external users only need to include this file
-│   └── accinte.inl         # Public API header file, as an extension of accinte.h, cannot be included separately.
+│   ├── openreg.h           # Public API header file, external users only need to include this file
+│   └── openreg.inl         # Public API header file, as an extension of openreg.h, cannot be included separately.
 ├── example/
-│   └── example.cpp         # Example for AccInte.
+│   └── example.cpp         # Example for OpenReg.
 ├── tests/
-│   ├── event_tests.cpp     # Testcases about AccInte Event.
-│   ├── stream_tests.cpp    # Testcases about AccInte Stream.
-│   ├── device_tests.cpp    # Testcases about AccInte Device.
-│   └── memory_tests.cpp    # Testcases about AccInte Memory.
+│   ├── event_tests.cpp     # Testcases about OpenReg Event.
+│   ├── stream_tests.cpp    # Testcases about OpenReg Stream.
+│   ├── device_tests.cpp    # Testcases about OpenReg Device.
+│   └── memory_tests.cpp    # Testcases about OpenReg Memory.
 └── csrc/
     ├── device.cpp          # Implementation of device management APIs
     ├── memory.cpp          # Implementation of memory management APIs
     └── stream.cpp          # Implementation of stream and event APIs.
 ```
 
-* `CMakeLists.txt`: Responsible for compiling and linking all source files under the `csrc/` directory to generate the final `libaccinte.so` shared library.
+* `CMakeLists.txt`: Responsible for compiling and linking all source files under the `csrc/` directory to generate the final `libopenreg.so` shared library.
 * `include`: Defines all externally exposed APIs, data structures, and enums.
-  * `accinte.h`: Defines all externally exposed C-style APIs.
-  * `accinte.inl`: Defines all externally exposed C++ APIs.
+  * `openreg.h`: Defines all externally exposed C-style APIs.
+  * `openreg.inl`: Defines all externally exposed C++ APIs.
 * `csrc/`: Contains the C++ implementation source code for all core functionalities.
   * `device.cpp`: Implements the core functions of device management: device discovery and context management.
   * `memory.cpp`: Implements the core functions of memory management: allocation, free, copy and memory protection.
@@ -45,11 +45,11 @@ accinte/
 
 ## Implemented APIs
 
-AccInte currently provides a set of APIs covering basic memory and device management.
+OpenReg currently provides a set of APIs covering basic memory and device management.
 
 ### Device Management APIs
 
-| AccInte                          | CUDA                               | Feature Description                |
+| OpenReg                          | CUDA                               | Feature Description                |
 | :------------------------------- | :--------------------------------- | :--------------------------------- |
 | `orGetDeviceCount`               | `cudaGetDeviceCount`               | Get the number of available GPUs   |
 | `orSetDevice`                    | `cudaSetDevice`                    | Set the active GPU                 |
@@ -59,7 +59,7 @@ AccInte currently provides a set of APIs covering basic memory and device manage
 
 ### Memory Management APIs
 
-| AccInte                  | CUDA                       | Feature Description                       |
+| OpenReg                  | CUDA                       | Feature Description                       |
 | :----------------------- | :------------------------- | :---------------------------------------- |
 | `orMalloc`               | `cudaMalloc`               | Allocate device memory                    |
 | `orFree`                 | `cudaFree`                 | Free device memory                        |
@@ -71,7 +71,7 @@ AccInte currently provides a set of APIs covering basic memory and device manage
 
 ### Stream APIs
 
-| AccInte                      | CUDA                           | Feature Description                    |
+| OpenReg                      | CUDA                           | Feature Description                    |
 | :--------------------------- | :----------------------------- | :------------------------------------- |
 | `orStreamCreate`             | `cudaStreamCreate`             |  Create a default-priority stream      |
 | `orStreamCreateWithPriority` | `cudaStreamCreateWithPriority` |  Create a stream with a given priority |
@@ -83,7 +83,7 @@ AccInte currently provides a set of APIs covering basic memory and device manage
 
 ### Event APIs
 
-| AccInte                  | CUDA                       | Feature Description                 |
+| OpenReg                  | CUDA                       | Feature Description                 |
 | :----------------------- | :------------------------- | :---------------------------------- |
 | `orEventCreate`          | `cudaEventCreate`          | Create an event with default flag   |
 | `orEventCreateWithFlags` | `cudaEventCreateWithFlags` | Create an event with specific flag  |
@@ -133,7 +133,7 @@ cmake ..
 make -j 32
 popd
 
-g++ -o out example/example.cpp -L ./build -laccinte -I ./
+g++ -o out example/example.cpp -L ./build -lopenreg -I ./
 LD_LIBRARY_PATH=./build ./out
 ```
 
@@ -149,4 +149,4 @@ Verification PASSED!
 
 ## Next Steps
 
-The most basic functions of the AccInte backend are currently supported, and will be dynamically optimized and expanded based on the needs of PyTorch integration.
+The most basic functions of the OpenReg backend are currently supported, and will be dynamically optimized and expanded based on the needs of PyTorch integration.

@@ -27,7 +27,7 @@ class MemoryManager {
       return orErrorUnknown;
 
     std::lock_guard<std::mutex> lock(m_mutex);
-    long page_size = accinte::get_pagesize();
+    long page_size = openreg::get_pagesize();
     size_t aligned_size = ((size - 1) / page_size + 1) * page_size;
     void* mem = nullptr;
     int current_device = -1;
@@ -35,15 +35,15 @@ class MemoryManager {
     if (type == orMemoryType::orMemoryTypeDevice) {
       orGetDevice(&current_device);
 
-      mem = accinte::mmap(aligned_size);
+      mem = openreg::mmap(aligned_size);
       if (mem == nullptr)
         return orErrorUnknown;
-      if (accinte::mprotect(mem, aligned_size, F_PROT_NONE) != 0) {
-        accinte::munmap(mem, aligned_size);
+      if (openreg::mprotect(mem, aligned_size, F_PROT_NONE) != 0) {
+        openreg::munmap(mem, aligned_size);
         return orErrorUnknown;
       }
     } else {
-      if (accinte::alloc(&mem, page_size, aligned_size) != 0) {
+      if (openreg::alloc(&mem, page_size, aligned_size) != 0) {
         return orErrorUnknown;
       }
     }
@@ -64,10 +64,10 @@ class MemoryManager {
 
     const auto& info = it->second;
     if (info.type == orMemoryType::orMemoryTypeDevice) {
-      accinte::mprotect(info.pointer, info.size, F_PROT_READ | F_PROT_WRITE);
-      accinte::munmap(info.pointer, info.size);
+      openreg::mprotect(info.pointer, info.size, F_PROT_READ | F_PROT_WRITE);
+      openreg::munmap(info.pointer, info.size);
     } else {
-      accinte::free(info.pointer);
+      openreg::free(info.pointer);
     }
 
     m_registry.erase(it);
@@ -156,7 +156,7 @@ class MemoryManager {
   orError_t unprotectNoLock(Block* info) {
     if (info && info->type == orMemoryType::orMemoryTypeDevice) {
       if (info->refcount == 0) {
-        if (accinte::mprotect(
+        if (openreg::mprotect(
                 info->pointer, info->size, F_PROT_READ | F_PROT_WRITE) != 0) {
           return orErrorUnknown;
         }
@@ -171,7 +171,7 @@ class MemoryManager {
   orError_t protectNoLock(Block* info) {
     if (info && info->type == orMemoryType::orMemoryTypeDevice) {
       if (info->refcount == 1) {
-        if (accinte::mprotect(info->pointer, info->size, F_PROT_NONE) != 0) {
+        if (openreg::mprotect(info->pointer, info->size, F_PROT_NONE) != 0) {
           return orErrorUnknown;
         }
       }

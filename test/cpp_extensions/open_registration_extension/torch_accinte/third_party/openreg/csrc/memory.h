@@ -15,7 +15,7 @@
 #define F_PROT_READ 0x1
 #define F_PROT_WRITE 0x2
 
-namespace accinte {
+namespace openreg {
 
 void* mmap(size_t size) {
 #if defined(_WIN32)
@@ -93,4 +93,4 @@ long get_pagesize() {
 #endif
 }
 
-} // namespace accinte
+} // namespace openreg

@@ -70,7 +70,7 @@ TEST_F(StreamTest, StreamTaskExecution) {
   EXPECT_EQ(orStreamCreate(&stream), orSuccess);
 
   std::atomic<int> counter{0};
-  EXPECT_EQ(accinte::addTaskToStream(stream, [&] { counter++; }), orSuccess);
+  EXPECT_EQ(openreg::addTaskToStream(stream, [&] { counter++; }), orSuccess);
 
   EXPECT_EQ(orStreamSynchronize(stream), orSuccess);
   EXPECT_EQ(counter.load(), 1);
@@ -80,7 +80,7 @@ TEST_F(StreamTest, StreamTaskExecution) {
 
 TEST_F(StreamTest, AddTaskToStreamNullptr) {
   // Queueing work should fail fast if the stream handle is invalid.
-  EXPECT_EQ(accinte::addTaskToStream(nullptr, [] {}), orErrorUnknown);
+  EXPECT_EQ(openreg::addTaskToStream(nullptr, [] {}), orErrorUnknown);
 }
 
 TEST_F(StreamTest, StreamQuery) {
@@ -90,7 +90,7 @@ TEST_F(StreamTest, StreamQuery) {
   EXPECT_EQ(orStreamQuery(stream), orSuccess);
 
   std::atomic<int> counter{0};
-  accinte::addTaskToStream(stream, [&] { counter++; });
+  openreg::addTaskToStream(stream, [&] { counter++; });
 
   EXPECT_EQ(orStreamSynchronize(stream), orSuccess);
   EXPECT_EQ(orStreamQuery(stream), orSuccess);
@@ -106,8 +106,8 @@ TEST_F(StreamTest, DeviceSynchronize) {
   EXPECT_EQ(orStreamCreate(&stream2), orSuccess);
 
   std::atomic<int> counter{0};
-  accinte::addTaskToStream(stream1, [&] { counter++; });
-  accinte::addTaskToStream(stream2, [&] { counter++; });
+  openreg::addTaskToStream(stream1, [&] { counter++; });
+  openreg::addTaskToStream(stream2, [&] { counter++; });
 
   EXPECT_EQ(orDeviceSynchronize(), orSuccess);
   EXPECT_EQ(counter.load(), 2);
@@ -124,7 +124,7 @@ TEST_F(StreamTest, DeviceSynchronizeWithNoStreams) {
 TEST_F(StreamTest, StreamPriorityRange) {
   int min_p = -1;
   int max_p = -1;
-  // AccInte currently exposes only one priority level; verify the fixed range.
+  // OpenReg currently exposes only one priority level; verify the fixed range.
   EXPECT_EQ(orDeviceGetStreamPriorityRange(&min_p, &max_p), orSuccess);
   EXPECT_EQ(min_p, 0);
   EXPECT_EQ(max_p, 1);

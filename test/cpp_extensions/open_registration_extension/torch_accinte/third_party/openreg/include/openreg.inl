@@ -1,18 +1,18 @@
-#ifndef ACCINTE_H
-#error "Don`t include accinte.inl directly, include accinte.h instead."
+#ifndef OPENREG_H
+#error "Don`t include openreg.inl directly, include openreg.h instead."
 #endif
 
 #include <functional>
 #include <tuple>
 #include <utility>
 
-namespace accinte {
-ACCINTE_EXPORT orError_t
+namespace openreg {
+OPENREG_EXPORT orError_t
 addTaskToStream(orStream* stream, std::function<void()> task);
 }
 
 template <typename Func, typename... Args>
-ACCINTE_EXPORT inline orError_t orLaunchKernel(
+OPENREG_EXPORT inline orError_t orLaunchKernel(
     orStream* stream,
     Func&& kernel_func,
     Args&&... args) {
@@ -38,5 +38,5 @@ ACCINTE_EXPORT inline orError_t orLaunchKernel(
       std::bind(std::forward<Func>(kernel_func), std::forward<Args>(args)...);
 #endif
 
-  return accinte::addTaskToStream(stream, std::move(task));
+  return openreg::addTaskToStream(stream, std::move(task));
 }

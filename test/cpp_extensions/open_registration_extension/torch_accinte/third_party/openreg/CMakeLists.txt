@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.18 FATAL_ERROR)
 
-project(TORCH_ACCINTE CXX C)
+project(TORCH_OPENREG CXX C)
 
 option(USE_TEST "Build and run unit tests" ON)
 
-set(LIBRARY_NAME accinte)
+set(LIBRARY_NAME openreg)
 set(LIBRARY_TEST ortests)
 
 file(GLOB_RECURSE SOURCE_FILES
