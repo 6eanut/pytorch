@@ -24,20 +24,20 @@ print(x)
 
 git clone https://github.com/6eanut/pytorch.git
 cd pytorch
-git checkout openreg_nogtest
+git checkout mram
 cd test/cpp_extensions/open_registration_extension/torch_openreg
 python3 -m pip install --no-build-isolation .
 
-# openreg_test.py
+# mram_test.py
 import torch
 
-if not torch.openreg.is_available():
-    print("OpenReg backend is not available in this build.")
+if not torch.mram.is_available():
+    print("MRAM backend is not available in this build.")
     exit()
 
-print("OpenReg backend is available!")
+print("MRAM backend is available!")
 
-device = torch.device("openreg")
+device = torch.device("mram")
 
 x = torch.tensor([[1., 2.], [3., 4.]], device=device)
 y = x + 2
