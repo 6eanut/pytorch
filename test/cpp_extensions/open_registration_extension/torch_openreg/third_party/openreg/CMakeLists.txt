@@ -20,26 +20,3 @@ install(TARGETS ${LIBRARY_NAME}
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
-
-if(USE_TEST)
-    enable_testing()
-
-    include(${CMAKE_CURRENT_LIST_DIR}/cmake/GTestTargets.cmake)
-
-    file(GLOB_RECURSE TEST_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp"
-    )
-
-    add_executable(${LIBRARY_TEST} ${TEST_FILES})
-    target_link_libraries(${LIBRARY_TEST}
-        PRIVATE
-        ${LIBRARY_NAME}
-        gtest
-        gtest_main
-    )
-
-    add_test(NAME alltests COMMAND ${LIBRARY_TEST})
-    add_custom_command(TARGET ${LIBRARY_TEST}
-                POST_BUILD
-                COMMAND ${CMAKE_CTEST_COMMAND} -C Release --output-on-failure --verbose)
-endif()

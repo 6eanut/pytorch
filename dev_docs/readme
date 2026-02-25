@@ -1,0 +1,49 @@
+docker pull ubuntu:22.04
+docker run -it \
+--rm \
+--privileged \
+--network=host \
+--ipc=host \
+--shm-size=16G \
+-v ~/docker-file:/workspace \
+--cap-add=SYS_ADMIN \
+--security-opt seccomp=unconfined \
+ubuntu:22.04 \
+/bin/bash -c "exec /bin/bash"
+
+apt update
+apt upgrade
+
+apt install python3 python3-pip vim cmake -y
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# torch_test.py
+import torch
+x = torch.rand(5, 3)
+print(x)
+
+git clone https://github.com/6eanut/pytorch.git
+cd pytorch
+git checkout openreg_nogtest
+cd test/cpp_extensions/open_registration_extension/torch_openreg
+python3 -m pip install --no-build-isolation .
+
+# openreg_test.py
+import torch
+
+if not torch.openreg.is_available():
+    print("OpenReg backend is not available in this build.")
+    exit()
+
+print("OpenReg backend is available!")
+
+device = torch.device("openreg")
+
+x = torch.tensor([[1., 2.], [3., 4.]], device=device)
+y = x + 2
+print("Result y:\n", y)
+print(f"Device of y: {y.device}")
+
+z = y.cpu()
+print("Result z:\n", z)
+print(f"Device of z: {z.device}")
