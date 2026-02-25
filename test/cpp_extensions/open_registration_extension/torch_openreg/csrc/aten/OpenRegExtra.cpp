@@ -129,6 +129,11 @@ void wrapper_abs_stub(at::TensorIteratorBase& iter) {
 at::Tensor wrapper_custom_abs(at::Tensor x) {
   return at::native::openreg::custom_abs(x);
 }
+
+// wrapper for custom_matrix_multiply
+at::Tensor wrapper_custom_matrix_multiply(const at::Tensor& a, const at::Tensor& b) {
+    return at::native::openreg::custom_matrix_multiply(a, b);
+}
 } // namespace
 
 using namespace at::native;
@@ -147,12 +152,14 @@ REGISTER_PRIVATEUSE1_DISPATCH(
 // LITERALINCLUDE START: CUSTOM OPERATOR SCHEMA
 TORCH_LIBRARY(openreg, m) {
   m.def("custom_abs(Tensor input)-> Tensor");
+  m.def("custom_matrix_multiply(Tensor a, Tensor b) -> Tensor");
 }
 // LITERALINCLUDE END: CUSTOM OPERATOR SCHEMA
 
 // LITERALINCLUDE START: CUSTOM OPERATOR DEFAULT
 TORCH_LIBRARY_IMPL(openreg, PrivateUse1, m) {
   m.impl("custom_abs", &wrapper_custom_abs);
+  m.impl("custom_matrix_multiply", &wrapper_custom_matrix_multiply);
 }
 // LITERALINCLUDE END: CUSTOM OPERATOR DEFAULT
 

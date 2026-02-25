@@ -65,5 +65,6 @@ at::Tensor custom_autograd_fn_aliasing(at::Tensor x);
 at::Tensor& abs_out(const at::Tensor& self, at::Tensor& out);
 void abs_kernel(at::TensorIteratorBase& iter);
 at::Tensor custom_abs(at::Tensor x);
+at::Tensor custom_matrix_multiply(const at::Tensor& A, const at::Tensor& B);
 
 } // namespace at::native::openreg
