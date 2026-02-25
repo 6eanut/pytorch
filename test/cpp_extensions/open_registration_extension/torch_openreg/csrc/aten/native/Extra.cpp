@@ -204,7 +204,7 @@ at::Tensor& abs_out(const at::Tensor& self, at::Tensor& out) {
 }
 
 at::Tensor custom_abs(at::Tensor x) {
-  return at::abs(x);
+  return at::abs(x) + 1;
 }
 
 } // namespace at::native::openreg
