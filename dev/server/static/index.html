@@ -1,0 +1,140 @@
+<!-- server/static/index.html -->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>custom_matrix_multiply Visualizer</title>
+    <style>
+      body { font-family: sans-serif; margin: 16px; }
+      .row { display: flex; gap: 16px; align-items: flex-start; }
+      .panel { border: 1px solid #ccc; padding: 12px; border-radius: 8px; }
+      table { border-collapse: collapse; }
+      td { border: 1px solid #eee; padding: 2px 6px; font-size: 12px; text-align: right; }
+      .hl { background: #ffe08a; }
+      .muted { color: #666; font-size: 12px; }
+      pre { background: #f6f6f6; padding: 8px; border-radius: 6px; overflow: auto; max-height: 220px; }
+    </style>
+  </head>
+  <body>
+    <h2>custom_matrix_multiply Visualizer</h2>
+
+    <div id="status" class="panel" style="margin-top:12px;">
+      Waiting...
+    </div>
+
+    <div class="row" style="margin-top:12px;">
+      <div class="panel">
+        <div><b>A</b> <span id="aShape" class="muted"></span></div>
+        <div id="a"></div>
+      </div>
+      <div class="panel">
+        <div><b>B</b> <span id="bShape" class="muted"></span></div>
+        <div id="b"></div>
+      </div>
+      <div class="panel">
+        <div><b>Result</b> <span id="rShape" class="muted"></span></div>
+        <div id="r"></div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px;">
+      <div class="panel" style="flex:1;">
+        <div><b>Last Event</b></div>
+        <pre id="evt"></pre>
+      </div>
+    </div>
+
+    <script>
+      const cap = 32;
+
+      function renderMatrix(el, mat, hlBox /* {r0,c0,h,w} */) {
+        if (!mat) { el.innerHTML = "<i class='muted'>empty</i>"; return; }
+        const data = mat.data;
+        const rows = data.length;
+        const cols = rows ? data[0].length : 0;
+
+        let html = "<table>";
+        for (let i = 0; i < rows; i++) {
+          html += "<tr>";
+          for (let j = 0; j < cols; j++) {
+            let cls = "";
+            if (hlBox) {
+              if (i >= hlBox.r0 && i < hlBox.r0 + hlBox.h && j >= hlBox.c0 && j < hlBox.c0 + hlBox.w) cls = "hl";
+            }
+            html += `<td class="${cls}">${data[i][j].toFixed(2)}</td>`;
+          }
+          html += "</tr>";
+        }
+        html += "</table>";
+        el.innerHTML = html;
+      }
+
+      let state = { a:null, b:null, result:null, shape:null };
+      let hlA=null, hlB=null, hlR=null;
+
+      async function loadState() {
+        const resp = await fetch("/state");
+        const js = await resp.json();
+        state.shape = js.shape;
+        state.a = js.a;
+        state.b = js.b;
+        state.result = js.result;
+
+        document.getElementById("aShape").textContent = js.a ? `(${js.a.shape[0]}x${js.a.shape[1]})` : "";
+        document.getElementById("bShape").textContent = js.b ? `(${js.b.shape[0]}x${js.b.shape[1]})` : "";
+        document.getElementById("rShape").textContent = js.result ? `(${js.result.shape[0]}x${js.result.shape[1]})` : "";
+
+        renderMatrix(document.getElementById("a"), state.a, hlA);
+        renderMatrix(document.getElementById("b"), state.b, hlB);
+        renderMatrix(document.getElementById("r"), state.result, hlR);
+      }
+
+      function setStatus(s) {
+        document.getElementById("status").textContent = s;
+      }
+
+      loadState();
+      setStatus("Connected. Waiting for /mm call from PyTorch...");
+
+      const es = new EventSource("/events");
+      es.onmessage = (msg) => {
+        const evt = JSON.parse(msg.data);
+        document.getElementById("evt").textContent = JSON.stringify(evt, null, 2);
+
+        if (evt.type === "input") {
+          hlA = hlB = hlR = null;
+          setStatus(`Input received: M=${evt.M} K=${evt.K} N=${evt.N}. Rendering (capped to ${cap}x${cap})...`);
+          loadState();
+          return;
+        }
+
+        if (evt.type === "block_mul") {
+          // highlight the 4x4 blocks, capped view only
+          const i = evt.i, j = evt.j, k = evt.k;
+          hlA = { r0: i, c0: k, h: 4, w: 4 };
+          hlB = { r0: k, c0: j, h: 4, w: 4 };
+          hlR = { r0: i, c0: j, h: 4, w: 4 };
+          setStatus(`Computing: A[${i}:${i+4},${k}:${k+4}] x B[${k}:${k+4},${j}:${j+4}] -> accumulate to C[${i}:${i+4},${j}:${j+4}]`);
+          renderMatrix(document.getElementById("a"), state.a, hlA);
+          renderMatrix(document.getElementById("b"), state.b, hlB);
+          renderMatrix(document.getElementById("r"), state.result, hlR);
+          return;
+        }
+
+        if (evt.type === "writeback") {
+          setStatus(`Writeback: C[${evt.i}:${evt.i+4},${evt.j}:${evt.j+4}]`);
+          // refresh result snapshot (MVP: just reload state)
+          loadState();
+          return;
+        }
+
+        if (evt.type === "done") {
+          setStatus("Done. Result updated.");
+          loadState();
+        }
+      };
+
+      es.onerror = () => setStatus("SSE error/disconnected. Refresh page after server restarts.");
+    </script>
+  </body>
+</html>

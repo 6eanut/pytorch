@@ -1,0 +1,8 @@
+容器里：
+python3 -m pip install fastapi uvicorn numpy
+python3 server/app.py
+CMM_STEP_DELAY_SEC=1.5 uvicorn server.app:app --host 0.0.0.0 --port 8000
+
+本地：
+ssh -L 8000:127.0.0.1:8000 user@remote
+浏览器打开 http://127.0.0.1:8000

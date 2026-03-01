@@ -1,8 +1,5 @@
+以下是Extra.cpp的内容：
 #include "Extra.h"
-
-#include "../../third_party/httplib.h"
-#include <cstring>
-#include <vector>
 
 namespace at::native::openreg {
 
@@ -211,64 +208,121 @@ at::Tensor custom_abs(at::Tensor x) {
   return at::abs(x) + 1;
 }
 
-at::Tensor custom_matrix_multiply(const at::Tensor& a, const at::Tensor& b) {
+static at::Tensor helper_4x4_mm(const at::Tensor& a, const at::Tensor& b) {
+  TORCH_CHECK(a.sizes() == at::IntArrayRef({4, 4}), "A must be 4x4");
+  TORCH_CHECK(b.sizes() == at::IntArrayRef({4, 4}), "B must be 4x4");
+
+  std::cout << "---- helper_4x4_mm ----" << std::endl;
+  std::cout << "Input A:\n" << a << std::endl;
+  std::cout << "Input B:\n" << b << std::endl;
+
+  auto a_cpu = a.to(at::kCPU);
+  auto b_cpu = b.to(at::kCPU);
+
+  auto result_cpu = at::zeros({4,4}, a_cpu.options());
+
+  auto a_acc = a_cpu.accessor<float,2>();
+  auto b_acc = b_cpu.accessor<float,2>();
+  auto r_acc = result_cpu.accessor<float,2>();
+
+  for (int i = 0; i < 4; ++i)
+    for (int j = 0; j < 4; ++j)
+      for (int k = 0; k < 4; ++k)
+        r_acc[i][j] += a_acc[i][k] * b_acc[k][j];
+
+  std::cout << "Result (4x4):\n" << result_cpu << std::endl;
+  std::cout << "------------------------" << std::endl;
+
+  return result_cpu.to(a.device());
+}
+
+at::Tensor custom_matrix_multiply(
+    const at::Tensor& a,
+    const at::Tensor& b) {
+
   TORCH_CHECK(a.dim() == 2 && b.dim() == 2, "Only 2D tensors supported");
   TORCH_CHECK(a.size(1) == b.size(0), "Matrix size mismatch");
+
   TORCH_CHECK(a.size(0) % 4 == 0, "Rows of A must be multiple of 4");
   TORCH_CHECK(a.size(1) % 4 == 0, "Cols of A must be multiple of 4");
   TORCH_CHECK(b.size(1) % 4 == 0, "Cols of B must be multiple of 4");
-  TORCH_CHECK(a.scalar_type() == at::kFloat && b.scalar_type() == at::kFloat, "Only float supported");
 
-  // MVP: ensure CPU contiguous (server only supports CPU float32 contiguous)
-  auto a_cpu = a.to(at::kCPU).contiguous();
-  auto b_cpu = b.to(at::kCPU).contiguous();
+  TORCH_CHECK(a.dtype() == at::kFloat, "Only float supported");
 
-  const int64_t M = a_cpu.size(0);
-  const int64_t K = a_cpu.size(1);
-  const int64_t N = b_cpu.size(1);
+  std::cout << "===== custom_matrix_multiply =====" << std::endl;
+  std::cout << "Input A size: " << a.sizes() << std::endl;
+  std::cout << "Input B size: " << b.sizes() << std::endl;
 
-  TORCH_CHECK(b_cpu.size(0) == K, "Matrix size mismatch after CPU conversion");
+  int64_t M = a.size(0);
+  int64_t K = a.size(1);
+  int64_t N = b.size(1);
 
-  const size_t a_bytes = (size_t)a_cpu.numel() * sizeof(float);
-  const size_t b_bytes = (size_t)b_cpu.numel() * sizeof(float);
+  auto result = at::zeros({M, N}, a.options());
 
-  // Build binary request
-  std::vector<char> body;
-  body.resize(4 + 8 * 3 + a_bytes + b_bytes);
-  std::memcpy(body.data(), "CMM1", 4);
-  auto* p = body.data() + 4;
-  std::memcpy(p, &M, 8); p += 8;
-  std::memcpy(p, &K, 8); p += 8;
-  std::memcpy(p, &N, 8); p += 8;
-  std::memcpy(p, a_cpu.data_ptr(), a_bytes); p += a_bytes;
-  std::memcpy(p, b_cpu.data_ptr(), b_bytes);
+  for (int64_t i = 0; i < M; i += 4) {
+    for (int64_t j = 0; j < N; j += 4) {
 
-  // HTTP POST
-  httplib::Client cli("127.0.0.1", 8000);
-  cli.set_connection_timeout(10, 0);
-  cli.set_read_timeout(300, 0);
+      std::cout << "\nComputing output block ("
+                << i << ":" << i+4
+                << ", " << j << ":" << j+4
+                << ")" << std::endl;
 
-  // auto res = cli.Post("/mm", body.data(), body.size(), "application/octet-stream");
-  // TORCH_CHECK(res, "HTTP request failed (server not running?)");
-  // TORCH_CHECK(res->status == 200, "Server error: ", res->status, " body=", res->body);
-  httplib::Request req;
-  req.method = "POST";
-  req.path = "/mm";
-  req.body.assign(body.data(), body.size());
-  req.set_header("Content-Type", "application/octet-stream");
+      auto block_c = at::zeros({4, 4}, a.options());
 
-  auto res = cli.send(req);
-  TORCH_CHECK(res, "HTTP request failed (server not running?)");
-  TORCH_CHECK(res->status == 200, "Server error: ", res->status, " body=", res->body);
+      for (int64_t k = 0; k < K; k += 4) {
 
-  // Response is raw float32 result, size = M*N*4
-  TORCH_CHECK((int64_t)res->body.size() == M * N * (int64_t)sizeof(float),
-              "Bad response size from server");
+        std::cout << "  Using A block ("
+                  << i << ":" << i+4
+                  << ", " << k << ":" << k+4
+                  << ")" << std::endl;
 
-  auto out_cpu = at::empty({M, N}, a_cpu.options());
-  std::memcpy(out_cpu.data_ptr(), res->body.data(), res->body.size());
+        std::cout << "  Using B block ("
+                  << k << ":" << k+4
+                  << ", " << j << ":" << j+4
+                  << ")" << std::endl;
 
-  return out_cpu.to(a.device());
+        auto block_a = a.slice(0, i, i+4).slice(1, k, k+4);
+        auto block_b = b.slice(0, k, k+4).slice(1, j, j+4);
+
+        auto partial = helper_4x4_mm(block_a.contiguous(),
+                                     block_b.contiguous());
+
+        block_c += partial;
+      }
+
+      result.slice(0, i, i+4)
+            .slice(1, j, j+4)
+            .copy_(block_c);
+
+      std::cout << "Final block result:\n" << block_c << std::endl;
+    }
+  }
+
+  std::cout << "\nFinal Result:\n" << result << std::endl;
+  std::cout << "==================================" << std::endl;
+
+  return result;
 }
 
 } // namespace at::native::openreg
+
+
+我现在想要重构一下custom_matrix_multiply。
+现在的custom_matrix_multiply是在pytorch里面做拆分和计算与合并，不方便展示。我现在想要启动一个server，这个server负责拆分、计算与合并，并且能够把这个过程可视化出来。
+比如先对输入做检查，一切检查通过之后。会把输入tensor给可视化出来，然后会把拆分过程显示出来，比如先计算的a矩阵的哪部分和b矩阵的哪部分的乘积，然后临时结果写到结果矩阵什么位置等等等等
+
+每次pytorch层面调用custom_matrix_multiply时都会发起一个rpc或者http请求，并且把输入tensor传给server，然后server计算完之后把结果返回给pytorch。
+
+我的开发环境是在本地ssh连接到远程机器，然后在远程机器里面创建了docker容器，在里面做的开发，启动docker容器的命令如下docker run -it \
+--rm \
+--privileged \
+--network=host \
+--ipc=host \
+--shm-size=16G \
+-v ~/docker-file:/workspace \
+--cap-add=SYS_ADMIN \
+--security-opt seccomp=unconfined \
+ubuntu:22.04 \
+/bin/bash -c "exec /bin/bash"
+
+最终的效果是：我在docker里面启动一个server，然后我在本地打开浏览器，输入相应的http服务器网站，可以看到初始状态，然后在docker里面运行一个pytorch代码，我可以在网站里看到tensor拆分、计算和合并的过程。
