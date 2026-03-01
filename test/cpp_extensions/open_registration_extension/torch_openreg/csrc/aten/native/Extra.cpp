@@ -207,240 +207,100 @@ at::Tensor custom_abs(at::Tensor x) {
   return at::abs(x) + 1;
 }
 
-// Helper: multiply two 2x2 tensors
-at::Tensor multiply_2x2_blocks(const at::Tensor& A_block, const at::Tensor& B_block) {
-    TORCH_CHECK(A_block.sizes() == c10::IntArrayRef({2, 2}), "A_block must be 2x2");
-    TORCH_CHECK(B_block.sizes() == c10::IntArrayRef({2, 2}), "B_block must be 2x2");
+static at::Tensor helper_4x4_mm(const at::Tensor& a, const at::Tensor& b) {
+  TORCH_CHECK(a.sizes() == at::IntArrayRef({4, 4}), "A must be 4x4");
+  TORCH_CHECK(b.sizes() == at::IntArrayRef({4, 4}), "B must be 4x4");
 
-    std::cout << "\n  ┌─ [multiply_2x2_blocks] 进入函数" << std::endl;
-    std::cout << "  │  输入 A_block (2x2):\n";
-    for (int i = 0; i < 2; ++i) {
-        std::cout << "  │    [";
-        for (int j = 0; j < 2; ++j)
-            std::cout << std::setw(8) << std::fixed << std::setprecision(4)
-                      << A_block[i][j].item<float>() << (j < 1 ? "," : "");
-        std::cout << " ]\n";
-    }
-    std::cout << "  │  输入 B_block (2x2):\n";
-    for (int i = 0; i < 2; ++i) {
-        std::cout << "  │    [";
-        for (int j = 0; j < 2; ++j)
-            std::cout << std::setw(8) << std::fixed << std::setprecision(4)
-                      << B_block[i][j].item<float>() << (j < 1 ? "," : "");
-        std::cout << " ]\n";
-    }
+  std::cout << "---- helper_4x4_mm ----" << std::endl;
+  std::cout << "Input A:\n" << a << std::endl;
+  std::cout << "Input B:\n" << b << std::endl;
 
-    auto options = A_block.options();
-    at::Tensor C_block = at::empty({2, 2}, options);
+  auto a_cpu = a.to(at::kCPU);
+  auto b_cpu = b.to(at::kCPU);
 
-    std::cout << "  │  开始逐元素点积计算 C = A × B:" << std::endl;
-    for (int64_t i = 0; i < 2; ++i) {
-        for (int64_t j = 0; j < 2; ++j) {
-            float sum = 0.0f;
-            std::cout << "  │    C[" << i << "," << j << "] = ";
-            for (int64_t k = 0; k < 2; ++k) {
-                float a_val = A_block[i][k].item<float>();
-                float b_val = B_block[k][j].item<float>();
-                float contrib = a_val * b_val;
-                sum += contrib;
-                std::cout << "A[" << i << "," << k << "](" << a_val << ")"
-                          << " * B[" << k << "," << j << "](" << b_val << ")"
-                          << " = " << contrib;
-                if (k < 1) std::cout << "  +  ";
-            }
-            C_block[i][j] = sum;
-            std::cout << "  =>  sum = " << sum << std::endl;
-        }
-    }
+  auto result_cpu = at::zeros({4,4}, a_cpu.options());
 
-    std::cout << "  │  输出 C_block (2x2):\n";
-    for (int i = 0; i < 2; ++i) {
-        std::cout << "  │    [";
-        for (int j = 0; j < 2; ++j)
-            std::cout << std::setw(8) << std::fixed << std::setprecision(4)
-                      << C_block[i][j].item<float>() << (j < 1 ? "," : "");
-        std::cout << " ]\n";
-    }
-    std::cout << "  └─ [multiply_2x2_blocks] 返回\n" << std::endl;
+  auto a_acc = a_cpu.accessor<float,2>();
+  auto b_acc = b_cpu.accessor<float,2>();
+  auto r_acc = result_cpu.accessor<float,2>();
 
-    return C_block;
+  for (int i = 0; i < 4; ++i)
+    for (int j = 0; j < 4; ++j)
+      for (int k = 0; k < 4; ++k)
+        r_acc[i][j] += a_acc[i][k] * b_acc[k][j];
+
+  std::cout << "Result (4x4):\n" << result_cpu << std::endl;
+  std::cout << "------------------------" << std::endl;
+
+  return result_cpu.to(a.device());
 }
 
-// Custom 2x2 block matrix multiplication with print debug
-at::Tensor custom_matrix_multiply(const at::Tensor& A, const at::Tensor& B) {
-    TORCH_CHECK(A.dim() == 2 && B.dim() == 2, "Inputs must be 2D matrices");
-    TORCH_CHECK(A.size(1) == B.size(0), "Matrix inner dimensions must match");
+at::Tensor custom_matrix_multiply(
+    const at::Tensor& a,
+    const at::Tensor& b) {
 
-    int64_t M = A.size(0);
-    int64_t K = A.size(1);
-    int64_t N = B.size(1);
-    TORCH_CHECK(M % 2 == 0 && K % 2 == 0 && N % 2 == 0,
-                "Currently only support multiples of 2");
+  TORCH_CHECK(a.dim() == 2 && b.dim() == 2, "Only 2D tensors supported");
+  TORCH_CHECK(a.size(1) == b.size(0), "Matrix size mismatch");
 
-    // ── 打印整体输入信息 ──────────────────────────────────────────
-    std::cout << "╔══════════════════════════════════════════════════╗" << std::endl;
-    std::cout << "║        [custom_matrix_multiply] 开始执行          ║" << std::endl;
-    std::cout << "╚══════════════════════════════════════════════════╝" << std::endl;
-    std::cout << "输入矩阵 A，形状: [" << M << " x " << K << "]，内容:\n";
-    for (int i = 0; i < M; ++i) {
-        std::cout << "  [";
-        for (int j = 0; j < K; ++j)
-            std::cout << std::setw(8) << std::fixed << std::setprecision(4)
-                      << A[i][j].item<float>() << (j < K-1 ? "," : "");
-        std::cout << " ]\n";
+  TORCH_CHECK(a.size(0) % 4 == 0, "Rows of A must be multiple of 4");
+  TORCH_CHECK(a.size(1) % 4 == 0, "Cols of A must be multiple of 4");
+  TORCH_CHECK(b.size(1) % 4 == 0, "Cols of B must be multiple of 4");
+
+  TORCH_CHECK(a.dtype() == at::kFloat, "Only float supported");
+
+  std::cout << "===== custom_matrix_multiply =====" << std::endl;
+  std::cout << "Input A size: " << a.sizes() << std::endl;
+  std::cout << "Input B size: " << b.sizes() << std::endl;
+
+  int64_t M = a.size(0);
+  int64_t K = a.size(1);
+  int64_t N = b.size(1);
+
+  auto result = at::zeros({M, N}, a.options());
+
+  for (int64_t i = 0; i < M; i += 4) {
+    for (int64_t j = 0; j < N; j += 4) {
+
+      std::cout << "\nComputing output block ("
+                << i << ":" << i+4
+                << ", " << j << ":" << j+4
+                << ")" << std::endl;
+
+      auto block_c = at::zeros({4, 4}, a.options());
+
+      for (int64_t k = 0; k < K; k += 4) {
+
+        std::cout << "  Using A block ("
+                  << i << ":" << i+4
+                  << ", " << k << ":" << k+4
+                  << ")" << std::endl;
+
+        std::cout << "  Using B block ("
+                  << k << ":" << k+4
+                  << ", " << j << ":" << j+4
+                  << ")" << std::endl;
+
+        auto block_a = a.slice(0, i, i+4).slice(1, k, k+4);
+        auto block_b = b.slice(0, k, k+4).slice(1, j, j+4);
+
+        auto partial = helper_4x4_mm(block_a.contiguous(),
+                                     block_b.contiguous());
+
+        block_c += partial;
+      }
+
+      result.slice(0, i, i+4)
+            .slice(1, j, j+4)
+            .copy_(block_c);
+
+      std::cout << "Final block result:\n" << block_c << std::endl;
     }
-    std::cout << "输入矩阵 B，形状: [" << K << " x " << N << "]，内容:\n";
-    for (int i = 0; i < K; ++i) {
-        std::cout << "  [";
-        for (int j = 0; j < N; ++j)
-            std::cout << std::setw(8) << std::fixed << std::setprecision(4)
-                      << B[i][j].item<float>() << (j < N-1 ? "," : "");
-        std::cout << " ]\n";
-    }
+  }
 
-    // ── 分块策略说明 ──────────────────────────────────────────────
-    std::cout << "\n>>> 分块策略: 将 A[" << M << "x" << K << "] 和 B["
-              << K << "x" << N << "] 均以 2x2 为单元进行分块矩阵乘法" << std::endl;
-    std::cout << "    C[" << M << "x" << N << "] 共需计算 "
-              << (M/2) << " x " << (N/2) << " = " << (M/2)*(N/2)
-              << " 个输出块，每个输出块由 " << K/2 << " 对 A/B 子块累加得到\n" << std::endl;
+  std::cout << "\nFinal Result:\n" << result << std::endl;
+  std::cout << "==================================" << std::endl;
 
-    auto options = A.options();
-    at::Tensor C = at::empty({M, N}, options);
-
-    for (int64_t i = 0; i < M; i += 2) {
-        for (int64_t j = 0; j < N; j += 2) {
-
-            std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;
-            std::cout << "▶ 计算输出块 C[" << i << ":" << i+2
-                      << ", " << j << ":" << j+2 << "]" << std::endl;
-            std::cout << "  初始化 C_block = zeros(2x2)，准备对 k 方向累加" << std::endl;
-
-            at::Tensor C_block = at::zeros({2, 2}, options);
-
-            for (int64_t k = 0; k < K; k += 2) {
-                auto A_block = A.slice(0, i, i+2).slice(1, k, k+2);
-                auto B_block = B.slice(0, k, k+2).slice(1, j, j+2);
-
-                std::cout << "\n  [k=" << k << "] 第 " << k/2+1 << "/" << K/2
-                          << " 次累加：" << std::endl;
-                std::cout << "    取 A_block = A[" << i << ":" << i+2
-                          << ", " << k << ":" << k+2 << "]" << std::endl;
-                std::cout << "    取 B_block = B[" << k << ":" << k+2
-                          << ", " << j << ":" << j+2 << "]" << std::endl;
-                std::cout << "    → 调用 multiply_2x2_blocks(A_block, B_block)" << std::endl;
-
-                at::Tensor partial = multiply_2x2_blocks(A_block, B_block);
-
-                std::cout << "    ← multiply_2x2_blocks 返回 partial (2x2):\n";
-                for (int pi = 0; pi < 2; ++pi) {
-                    std::cout << "        [";
-                    for (int pj = 0; pj < 2; ++pj)
-                        std::cout << std::setw(8) << std::fixed << std::setprecision(4)
-                                  << partial[pi][pj].item<float>() << (pj < 1 ? "," : "");
-                    std::cout << " ]\n";
-                }
-
-                C_block += partial;
-
-                std::cout << "    C_block 累加后 (当前中间值):\n";
-                for (int pi = 0; pi < 2; ++pi) {
-                    std::cout << "        [";
-                    for (int pj = 0; pj < 2; ++pj)
-                        std::cout << std::setw(8) << std::fixed << std::setprecision(4)
-                                  << C_block[pi][pj].item<float>() << (pj < 1 ? "," : "");
-                    std::cout << " ]\n";
-                }
-            }
-
-            std::cout << "\n  ✔ C_block 累加完毕，最终值写回 C["
-                      << i << ":" << i+2 << ", " << j << ":" << j+2 << "]:\n";
-            for (int pi = 0; pi < 2; ++pi) {
-                std::cout << "      [";
-                for (int pj = 0; pj < 2; ++pj)
-                    std::cout << std::setw(8) << std::fixed << std::setprecision(4)
-                              << C_block[pi][pj].item<float>() << (pj < 1 ? "," : "");
-                std::cout << " ]\n";
-            }
-            C.slice(0, i, i+2).slice(1, j, j+2).copy_(C_block);
-        }
-    }
-
-    std::cout << "\n╔══════════════════════════════════════════════════╗" << std::endl;
-    std::cout << "║     [custom_matrix_multiply] 全部块计算完毕        ║" << std::endl;
-    std::cout << "╚══════════════════════════════════════════════════╝" << std::endl;
-    std::cout << "输出矩阵 C，形状: [" << M << " x " << N << "]，内容:\n";
-    for (int i = 0; i < M; ++i) {
-        std::cout << "  [";
-        for (int j = 0; j < N; ++j)
-            std::cout << std::setw(8) << std::fixed << std::setprecision(4)
-                      << C[i][j].item<float>() << (j < N-1 ? "," : "");
-        std::cout << " ]\n";
-    }
-
-    return C;
+  return result;
 }
-
-// // Helper: multiply two 2x2 tensors
-// at::Tensor multiply_2x2_blocks(const at::Tensor& A_block, const at::Tensor& B_block) {
-//     TORCH_CHECK(A_block.sizes() == c10::IntArrayRef({2, 2}), "A_block must be 2x2");
-//     TORCH_CHECK(B_block.sizes() == c10::IntArrayRef({2, 2}), "B_block must be 2x2");
-
-//     auto options = A_block.options();
-//     at::Tensor C_block = at::empty({2, 2}, options);
-
-//     for (int64_t i = 0; i < 2; ++i) {
-//         for (int64_t j = 0; j < 2; ++j) {
-//             float sum = 0.0f;
-//             for (int64_t k = 0; k < 2; ++k) {
-//                 sum += A_block[i][k].item<float>() * B_block[k][j].item<float>();
-//             }
-//             C_block[i][j] = sum;
-//             std::cout << "C_block[" << i << "," << j << "] = " << sum << std::endl;
-//         }
-//     }
-//     return C_block;
-// }
-
-// // Custom 2x2 block matrix multiplication with print debug
-// at::Tensor custom_matrix_multiply(const at::Tensor& A, const at::Tensor& B) {
-//     TORCH_CHECK(A.dim() == 2 && B.dim() == 2, "Inputs must be 2D matrices");
-//     TORCH_CHECK(A.size(1) == B.size(0), "Matrix inner dimensions must match");
-
-//     int64_t M = A.size(0);
-//     int64_t K = A.size(1);
-//     int64_t N = B.size(1);
-
-//     TORCH_CHECK(M % 2 == 0 && K % 2 == 0 && N % 2 == 0,
-//                 "Currently only support multiples of 2");
-
-//     auto options = A.options();
-//     at::Tensor C = at::empty({M, N}, options);
-
-//     std::cout << "Starting custom_matrix_multiply with shape: "
-//               << A.sizes() << " x " << B.sizes() << std::endl;
-
-//     for (int64_t i = 0; i < M; i += 2) {
-//         for (int64_t j = 0; j < N; j += 2) {
-//             at::Tensor C_block = at::zeros({2, 2}, options);  // accumulate sum over k-blocks
-//             for (int64_t k = 0; k < K; k += 2) {
-//                 auto A_block = A.slice(0, i, i+2).slice(1, k, k+2);
-//                 auto B_block = B.slice(0, k, k+2).slice(1, j, j+2);
-
-//                 std::cout << "Multiplying block A(" << i << ":" << i+2
-//                           << "," << k << ":" << k+2 << ") x B("
-//                           << k << ":" << k+2 << "," << j << ":" << j+2
-//                           << ")" << std::endl;
-
-//                 // multiply 2x2 blocks using helper
-//                 C_block += multiply_2x2_blocks(A_block, B_block);
-//             }
-//             // write the result block back to C
-//             C.slice(0, i, i+2).slice(1, j, j+2).copy_(C_block);
-//         }
-//     }
-
-//     return C;
-// }
 
 } // namespace at::native::openreg

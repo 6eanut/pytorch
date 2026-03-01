@@ -404,7 +404,9 @@ TORCH_LIBRARY_IMPL(openreg, AutogradPrivateUse1, m) {
 
 我现在有一个需求，那就是实现一个custom_matrix_multiply的函数，并注册为一个custom operator，要求输入输出都是Tensor，并且输出Tensor的值是输入的两个Tensor的矩阵乘积。请帮我实现这个函数，并完成注册。
 
-要求假设自定义的backend只支持2*2和2*2的矩阵乘积，这就要求custom_matrix_multiply需要先对输入矩阵进行拆解成2*2的子矩阵，分别进行乘积计算后再拼接回去。目前在实现时可以先不考虑输入矩阵的大小不是16的倍数的情况。
+要求假设自定义的backend只支持4*4和4*4的矩阵乘积，这就要求custom_matrix_multiply需要先对输入矩阵进行拆解成4*4的子矩阵，分别进行乘积计算后再拼接回去。目前在实现时可以先不考虑输入矩阵的大小不是16的倍数的情况。
+
+可以理解为有一个helper函数，接收两个4*4的tensor，返回这两个tensor的乘积，在pytorch层面调用custom_matrix_multiply，其内部会对大矩阵进行拆解，而后调用helper计算，最后合并。
 
 要求最终能跑起来这么一个简单的程序：
 import torch
@@ -426,3 +428,5 @@ print("Result y:\n", y)
 print(f"Device of y: {y.device}")
 
 实现不用太复杂，就实现这么一个简单的小规模就可以。然后我希望可以把拆解矩阵、计算乘积、拼接矩阵的过程都通过print调试打印在终端。
+
+需要考虑的事情是怎样打印日志，能够让读者看一个图片(日志在终端中的截图)，就能明白拆解、计算和合并这个过程。
