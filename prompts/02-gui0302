@@ -1,0 +1,317 @@
+# server/app.py
+import json
+import queue
+import struct
+import time
+from dataclasses import dataclass
+from typing import Optional, Tuple
+
+import numpy as np
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+
+app = FastAPI()
+
+app.mount("/static", StaticFiles(directory="server/static"), name="static")
+
+
+@dataclass
+class LatestState:
+    a: Optional[np.ndarray] = None
+    b: Optional[np.ndarray] = None
+    result: Optional[np.ndarray] = None
+    shape: Optional[Tuple[int, int, int]] = None  # (M,K,N)
+
+
+latest = LatestState()
+event_q: "queue.Queue[str]" = queue.Queue(maxsize=10000)
+
+
+def publish(evt: dict) -> None:
+    evt["ts"] = time.time()
+    try:
+        event_q.put_nowait(json.dumps(evt))
+    except queue.Full:
+        # Drop events if UI can't keep up; MVP behavior.
+        pass
+
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    with open("server/static/index.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/state")
+def state():
+    # Small JSON for initialization; matrices can be large, so we cap.
+    def pack(mat: Optional[np.ndarray]):
+        if mat is None:
+            return None
+        m, n = mat.shape
+        cap = 32
+        view = mat[: min(m, cap), : min(n, cap)]
+        return {"shape": [int(m), int(n)], "data": view.astype(np.float32).tolist()}
+
+    return {
+        "shape": list(latest.shape) if latest.shape else None,
+        "a": pack(latest.a),
+        "b": pack(latest.b),
+        "result": pack(latest.result),
+    }
+
+
+@app.get("/events")
+def events():
+    def gen():
+        # SSE stream
+        while True:
+            msg = event_q.get()
+            yield f"data: {msg}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+def parse_mm_request(body: bytes) -> Tuple[int, int, int, np.ndarray, np.ndarray]:
+    """
+    Binary protocol:
+    - 4 bytes: magic 'CMM1'
+    - 3x int64: M,K,N little-endian
+    - raw float32 A of size M*K
+    - raw float32 B of size K*N
+    """
+    if len(body) < 4 + 8 * 3:
+        raise ValueError("body too small")
+    magic = body[:4]
+    if magic != b"CMM1":
+        raise ValueError("bad magic")
+    M, K, N = struct.unpack_from("<qqq", body, 4)
+    off = 4 + 8 * 3
+    a_n = M * K
+    b_n = K * N
+    a_bytes = a_n * 4
+    b_bytes = b_n * 4
+    need = off + a_bytes + b_bytes
+    if len(body) != need:
+        raise ValueError(f"bad body size: got={len(body)} need={need}")
+
+    a = np.frombuffer(body, dtype=np.float32, count=a_n, offset=off).reshape(M, K).copy()
+    off2 = off + a_bytes
+    b = np.frombuffer(body, dtype=np.float32, count=b_n, offset=off2).reshape(K, N).copy()
+    return M, K, N, a, b
+
+import asyncio
+delay = 2.0
+
+@app.post("/mm")
+async def mm(req: Request):
+    body = await req.body()
+    M, K, N, a, b = parse_mm_request(body)
+
+    # Checks (mirror C++ side, defensive)
+    if a.dtype != np.float32 or b.dtype != np.float32:
+        return Response(content=b"bad dtype", status_code=400)
+    if a.ndim != 2 or b.ndim != 2:
+        return Response(content=b"bad dim", status_code=400)
+    if a.shape != (M, K) or b.shape != (K, N):
+        return Response(content=b"bad shape", status_code=400)
+    if (M % 4) or (K % 4) or (N % 4):
+        return Response(content=b"shape not multiple of 4", status_code=400)
+
+    latest.a = a
+    latest.b = b
+    latest.shape = (int(M), int(K), int(N))
+    latest.result = None
+
+    publish({"type": "input", "M": int(M), "K": int(K), "N": int(N)})
+    await asyncio.sleep(delay)
+
+    result = np.zeros((M, N), dtype=np.float32)
+    latest.result = result
+
+    # Blocked multiply with visualization events
+    block = 4
+    for i in range(0, M, block):
+        for j in range(0, N, block):
+            block_c = np.zeros((block, block), dtype=np.float32)
+            publish({"type": "block_start", "i": i, "j": j})
+            await asyncio.sleep(delay)
+
+            for k in range(0, K, block):
+                a_blk = a[i : i + block, k : k + block]
+                b_blk = b[k : k + block, j : j + block]
+                publish({"type": "block_mul", "i": i, "j": j, "k": k})
+                await asyncio.sleep(delay)
+
+                partial = (a_blk @ b_blk).astype(np.float32)
+                publish({"type": "partial", "i": i, "j": j, "k": k, "partial": partial.tolist()})
+                await asyncio.sleep(delay)
+
+                block_c += partial
+                publish({"type": "accum", "i": i, "j": j, "k": k, "block_c": block_c.tolist()})
+                await asyncio.sleep(delay)
+
+            result[i : i + block, j : j + block] = block_c
+            publish({"type": "writeback", "i": i, "j": j, "block_c": block_c.tolist()})
+            await asyncio.sleep(delay) 
+
+    latest.result = result
+    publish({"type": "done"})
+    await asyncio.sleep(delay)
+
+    # Return raw float32 result
+    return Response(content=result.tobytes(order="C"), media_type="application/octet-stream")
+
+以上是server/app.py的完整代码
+
+<!-- server/static/index.html -->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>custom_matrix_multiply Visualizer</title>
+    <style>
+      body { font-family: sans-serif; margin: 16px; }
+      .row { display: flex; gap: 16px; align-items: flex-start; }
+      .panel { border: 1px solid #ccc; padding: 12px; border-radius: 8px; }
+      table { border-collapse: collapse; }
+      td { border: 1px solid #eee; padding: 2px 6px; font-size: 12px; text-align: right; }
+      .hl { background: #ffe08a; }
+      .muted { color: #666; font-size: 12px; }
+      pre { background: #f6f6f6; padding: 8px; border-radius: 6px; overflow: auto; max-height: 220px; }
+    </style>
+  </head>
+  <body>
+    <h2>custom_matrix_multiply Visualizer</h2>
+
+    <div id="status" class="panel" style="margin-top:12px;">
+      Waiting...
+    </div>
+
+    <div class="row" style="margin-top:12px;">
+      <div class="panel">
+        <div><b>A</b> <span id="aShape" class="muted"></span></div>
+        <div id="a"></div>
+      </div>
+      <div class="panel">
+        <div><b>B</b> <span id="bShape" class="muted"></span></div>
+        <div id="b"></div>
+      </div>
+      <div class="panel">
+        <div><b>Result</b> <span id="rShape" class="muted"></span></div>
+        <div id="r"></div>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:12px;">
+      <div class="panel" style="flex:1;">
+        <div><b>Last Event</b></div>
+        <pre id="evt"></pre>
+      </div>
+    </div>
+
+    <script>
+      const cap = 32;
+
+      function renderMatrix(el, mat, hlBox /* {r0,c0,h,w} */) {
+        if (!mat) { el.innerHTML = "<i class='muted'>empty</i>"; return; }
+        const data = mat.data;
+        const rows = data.length;
+        const cols = rows ? data[0].length : 0;
+
+        let html = "<table>";
+        for (let i = 0; i < rows; i++) {
+          html += "<tr>";
+          for (let j = 0; j < cols; j++) {
+            let cls = "";
+            if (hlBox) {
+              if (i >= hlBox.r0 && i < hlBox.r0 + hlBox.h && j >= hlBox.c0 && j < hlBox.c0 + hlBox.w) cls = "hl";
+            }
+            html += `<td class="${cls}">${data[i][j].toFixed(2)}</td>`;
+          }
+          html += "</tr>";
+        }
+        html += "</table>";
+        el.innerHTML = html;
+      }
+
+      let state = { a:null, b:null, result:null, shape:null };
+      let hlA=null, hlB=null, hlR=null;
+
+      async function loadState() {
+        const resp = await fetch("/state");
+        const js = await resp.json();
+        state.shape = js.shape;
+        state.a = js.a;
+        state.b = js.b;
+        state.result = js.result;
+
+        document.getElementById("aShape").textContent = js.a ? `(${js.a.shape[0]}x${js.a.shape[1]})` : "";
+        document.getElementById("bShape").textContent = js.b ? `(${js.b.shape[0]}x${js.b.shape[1]})` : "";
+        document.getElementById("rShape").textContent = js.result ? `(${js.result.shape[0]}x${js.result.shape[1]})` : "";
+
+        renderMatrix(document.getElementById("a"), state.a, hlA);
+        renderMatrix(document.getElementById("b"), state.b, hlB);
+        renderMatrix(document.getElementById("r"), state.result, hlR);
+      }
+
+      function setStatus(s) {
+        document.getElementById("status").textContent = s;
+      }
+
+      loadState();
+      setStatus("Connected. Waiting for /mm call from PyTorch...");
+
+      const es = new EventSource("/events");
+      es.onmessage = (msg) => {
+        const evt = JSON.parse(msg.data);
+        document.getElementById("evt").textContent = JSON.stringify(evt, null, 2);
+
+        if (evt.type === "input") {
+          hlA = hlB = hlR = null;
+          setStatus(`Input received: M=${evt.M} K=${evt.K} N=${evt.N}. Rendering (capped to ${cap}x${cap})...`);
+          loadState();
+          return;
+        }
+
+        if (evt.type === "block_mul") {
+          // highlight the 4x4 blocks, capped view only
+          const i = evt.i, j = evt.j, k = evt.k;
+          hlA = { r0: i, c0: k, h: 4, w: 4 };
+          hlB = { r0: k, c0: j, h: 4, w: 4 };
+          hlR = { r0: i, c0: j, h: 4, w: 4 };
+          setStatus(`Computing: A[${i}:${i+4},${k}:${k+4}] x B[${k}:${k+4},${j}:${j+4}] -> accumulate to C[${i}:${i+4},${j}:${j+4}]`);
+          renderMatrix(document.getElementById("a"), state.a, hlA);
+          renderMatrix(document.getElementById("b"), state.b, hlB);
+          renderMatrix(document.getElementById("r"), state.result, hlR);
+          return;
+        }
+
+        if (evt.type === "writeback") {
+          setStatus(`Writeback: C[${evt.i}:${evt.i+4},${evt.j}:${evt.j+4}]`);
+          // refresh result snapshot (MVP: just reload state)
+          loadState();
+          return;
+        }
+
+        if (evt.type === "done") {
+          setStatus("Done. Result updated.");
+          loadState();
+        }
+      };
+
+      es.onerror = () => setStatus("SSE error/disconnected. Refresh page after server restarts.");
+    </script>
+  </body>
+</html>
+
+以上是server/static/index.html的完整代码
+
+现在我希望你帮我改进一下gui，我先把老师给的建议原话发给你看看：
+“不过感觉GUI上少了点东西。比如说，有没有可能在GUI上显示一个待执行的指令列表，然后展示一个一个指令的执行过程呢。”
+“如果有比较细的，我觉得可以有越细的越好，这样屏幕刷新的可以快一些。现在给人的感觉就是，如果我不是看录屏，而是看现场演示，我也看不到进度条往前走，给人的感觉就是一顿一顿的，好像在放幻灯片。
+
+当然，如果没有更细粒度的指令，那我感觉把上面显示状态的那个地方，每次做的操作写一个列表出来，然后看到列表里每一项以此高亮（你可以把这个列表里的每一项暂且称作 指令 来跟这些数学系的专家讲）”
+
+我理解的意思就是把原本last event那块可以删掉了，然后换成一个指令列表，展示accumulate,Writeback等这些状态，然后当计算某一部分时，该条指令所在的背景高亮或者字体高亮(具体你来设计，怎么好看怎么来)

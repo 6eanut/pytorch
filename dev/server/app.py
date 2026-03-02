@@ -102,7 +102,7 @@ def parse_mm_request(body: bytes) -> Tuple[int, int, int, np.ndarray, np.ndarray
     return M, K, N, a, b
 
 import asyncio
-delay = 2.0
+delay = 1.0
 
 @app.post("/mm")
 async def mm(req: Request):

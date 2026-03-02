@@ -31,8 +31,8 @@ else:
 
 
 # one more time with different shapes
-a = torch.randn(4, 8, device=device)
-b = torch.randn(8, 8, device=device)
+a = torch.randn(8, 4, device=device)
+b = torch.randn(4, 8, device=device)
 
 c = torch.ops.openreg.custom_matrix_multiply(a, b)
 
