@@ -1,241 +1,177 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <title>custom_matrix_multiply Visualizer</title>
-  <style>
-    body { font-family: sans-serif; margin: 16px; }
+<meta charset="utf-8" />
+<title>Matrix Multiply Visualizer</title>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; margin: 16px; background: #f4f4f7; }
     .row { display: flex; gap: 16px; align-items: flex-start; }
-    .panel { border: 1px solid #ccc; padding: 12px; border-radius: 8px; background: #fff; }
-    table { border-collapse: collapse; }
-    td { border: 1px solid #eee; padding: 2px 6px; font-size: 12px; text-align: right; }
-    .hl { background: #ffe08a; }
-    .muted { color: #666; font-size: 12px; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .panel { border: 1px solid #ddd; padding: 12px; border-radius: 8px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    table { border-collapse: collapse; background: white; }
+    td { border: 1px solid #eee; padding: 2px 4px; font-size: 11px; text-align: right; min-width: 35px; }
+    .hl { background: #fff3bf; outline: 1px solid #fab005; }
+    .muted { color: #868e96; font-size: 11px; }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
 
-    /* Instruction list */
-    .instrWrap { max-height: 260px; overflow: auto; }
+    .instrWrap { max-height: 500px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px; }
     .instr { margin: 0; padding: 0; list-style: none; }
     .instr li {
-      padding: 6px 8px;
-      border-bottom: 1px solid #f0f0f0;
-      font-size: 12px;
-      line-height: 1.25;
-      white-space: pre-wrap;
+        padding: 3px 10px;
+        border-bottom: 1px solid #f8f9fa;
+        font-size: 11px;
+        color: #495057;
+        transition: all 0.1s;
     }
-    .instr li.active { background: #eaf3ff; border-left: 4px solid #2b7fff; padding-left: 4px; }
-    .instr li.ok { background: #ecfff1; border-left: 4px solid #2db55d; padding-left: 4px; }
-    .instr li.warn { background: #fff8e6; border-left: 4px solid #d8a200; padding-left: 4px; }
-    .instr li.err { background: #ffecec; border-left: 4px solid #d43c3c; padding-left: 4px; }
+    .instr li.active { background: #e7f5ff; color: #1971c2; font-weight: bold; border-left: 4px solid #339af0; padding-left: 6px; }
+    .instr li.ok { color: #2f9e44; }
+    .instr li.header { background: #f8f9fa; font-weight: bold; font-size: 10px; color: #adb5bd; text-transform: uppercase; }
 
-    .toolbar { display:flex; gap: 8px; align-items:center; margin-top: 8px; }
-    button { font-size: 12px; padding: 6px 10px; }
-  </style>
+    .toolbar { display:flex; gap: 12px; align-items:center; margin-bottom: 8px; }
+    button { cursor: pointer; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; background: #fff; font-size: 12px; }
+    button:hover { background: #f8f9fa; }
+</style>
 </head>
 <body>
-  <h2>custom_matrix_multiply Visualizer</h2>
 
-  <div id="status" class="panel" style="margin-top:12px;">Waiting...</div>
+<div class="row" style="justify-content: space-between; align-items: center;">
+    <h2>Matrix Multiply Visualizer</h2>
+    <div id="status" class="muted mono">Idle</div>
+</div>
 
-  <div class="row" style="margin-top:12px;">
+<div class="row">
     <div class="panel">
-      <div><b>A</b> <span id="aShape" class="muted"></span></div>
-      <div id="a"></div>
+        <div><b>A</b> <span id="aShape" class="muted"></span></div>
+        <div id="a" style="margin-top:8px;"></div>
     </div>
     <div class="panel">
-      <div><b>B</b> <span id="bShape" class="muted"></span></div>
-      <div id="b"></div>
+        <div><b>B</b> <span id="bShape" class="muted"></span></div>
+        <div id="b" style="margin-top:8px;"></div>
     </div>
     <div class="panel">
-      <div><b>Result</b> <span id="rShape" class="muted"></span></div>
-      <div id="r"></div>
+        <div><b>Result</b> <span id="rShape" class="muted"></span></div>
+        <div id="r" style="margin-top:8px;"></div>
     </div>
-  </div>
+</div>
 
-  <div class="row" style="margin-top:12px;">
-    <div class="panel" style="flex:1;">
-      <div style="display:flex; justify-content:space-between; align-items:baseline;">
-        <div><b>Instruction Trace</b></div>
+<div class="panel" style="margin-top:16px;">
+    <div class="toolbar">
+        <div style="font-weight:bold;">Instruction Trace</div>
         <div class="muted mono" id="counter">0</div>
-      </div>
-
-      <div class="toolbar">
-        <button id="btnClear">Clear</button>
-        <label class="muted" style="display:flex; gap:6px; align-items:center;">
-          <input type="checkbox" id="autoScroll" checked />
-          Auto-scroll
-        </label>
-      </div>
-
-      <div class="instrWrap" id="instrWrap" style="margin-top:8px;">
-        <ul class="instr" id="instr"></ul>
-      </div>
+        <label class="muted"><input type="checkbox" id="autoScroll" checked /> Auto-scroll</label>
     </div>
-  </div>
+    <div class="instrWrap" id="instrWrap">
+        <ul class="instr" id="instr"></ul>
+    </div>
+</div>
 
 <script>
-  const cap = 32;
-  const MAX_INSTR = 400; // avoid DOM getting huge
+    const cap = 32;
+    let state = { a:null, b:null, result:null, shape:null };
+    let hlA=null, hlB=null, hlR=null;
+    let lastActiveLi = null;
 
-  function renderMatrix(el, mat, hlBox /* {r0,c0,h,w} */) {
-    if (!mat) { el.innerHTML = "<i class='muted'>empty</i>"; return; }
-    const data = mat.data;
-    const rows = data.length;
-    const cols = rows ? data[0].length : 0;
-
-    let html = "<table>";
-    for (let i = 0; i < rows; i++) {
-      html += "<tr>";
-      for (let j = 0; j < cols; j++) {
-        let cls = "";
-        if (hlBox) {
-          if (i >= hlBox.r0 && i < hlBox.r0 + hlBox.h && j >= hlBox.c0 && j < hlBox.c0 + hlBox.w) cls = "hl";
+    function renderMatrix(el, mat, hlBox) {
+        if (!mat) { el.innerHTML = "<i class='muted'>Empty</i>"; return; }
+        const data = mat.data;
+        const rows = data.length;
+        const cols = rows ? data[0].length : 0;
+        let html = "<table>";
+        for (let i = 0; i < rows; i++) {
+            html += "<tr>";
+            for (let j = 0; j < cols; j++) {
+                let cls = "";
+                if (hlBox && i >= hlBox.r0 && i < hlBox.r0 + hlBox.h && j >= hlBox.c0 && j < hlBox.c0 + hlBox.w) cls = "hl";
+                html += `<td class="${cls}">${data[i][j].toFixed(2)}</td>`;
+            }
+            html += "</tr>";
         }
-        html += `<td class="${cls}">${data[i][j].toFixed(2)}</td>`;
-      }
-      html += "</tr>";
-    }
-    html += "</table>";
-    el.innerHTML = html;
-  }
-
-  let state = { a:null, b:null, result:null, shape:null };
-  let hlA=null, hlB=null, hlR=null;
-
-  async function loadState() {
-    const resp = await fetch("/state");
-    const js = await resp.json();
-    state.shape = js.shape;
-    state.a = js.a;
-    state.b = js.b;
-    state.result = js.result;
-
-    document.getElementById("aShape").textContent = js.a ? `(${js.a.shape[0]}x${js.a.shape[1]})` : "";
-    document.getElementById("bShape").textContent = js.b ? `(${js.b.shape[0]}x${js.b.shape[1]})` : "";
-    document.getElementById("rShape").textContent = js.result ? `(${js.result.shape[0]}x${js.result.shape[1]})` : "";
-
-    renderMatrix(document.getElementById("a"), state.a, hlA);
-    renderMatrix(document.getElementById("b"), state.b, hlB);
-    renderMatrix(document.getElementById("r"), state.result, hlR);
-  }
-
-  function setStatus(s) {
-    document.getElementById("status").textContent = s;
-  }
-
-  // Instruction list helpers
-  let instrCount = 0;
-  let lastActiveLi = null;
-
-  function evtToInstr(evt) {
-    // Human-readable "instruction" string
-    if (evt.type === "input") {
-      return `Input: M=${evt.M} K=${evt.K} N=${evt.N} (view capped to ${cap}x${cap})`;
-    }
-    if (evt.type === "block_start") {
-      return `BlockStart: C[${evt.i}:${evt.i+4}, ${evt.j}:${evt.j+4}]`;
-    }
-    if (evt.type === "block_mul") {
-      return `Mul: A[${evt.i}:${evt.i+4}, ${evt.k}:${evt.k+4}] x B[${evt.k}:${evt.k+4}, ${evt.j}:${evt.j+4}]`;
-    }
-    if (evt.type === "partial") {
-      return `Partial: add (A@B) into local block for C[${evt.i}:${evt.i+4}, ${evt.j}:${evt.j+4}] @ k=${evt.k}`;
-    }
-    if (evt.type === "accum") {
-      return `Accumulate: block_c += partial (k=${evt.k}) for C[${evt.i}:${evt.i+4}, ${evt.j}:${evt.j+4}]`;
-    }
-    if (evt.type === "writeback") {
-      return `Writeback: C[${evt.i}:${evt.i+4}, ${evt.j}:${evt.j+4}] <- block_c`;
-    }
-    if (evt.type === "done") {
-      return `Done: result ready`;
-    }
-    return `Event: ${evt.type}`;
-  }
-
-  function evtClass(evt) {
-    if (evt.type === "done") return "ok";
-    if (evt.type === "input") return "warn";
-    return "";
-  }
-
-  function addInstruction(evt) {
-    const ul = document.getElementById("instr");
-    const wrap = document.getElementById("instrWrap");
-    const autoScroll = document.getElementById("autoScroll").checked;
-
-    // Deactivate previous
-    if (lastActiveLi) lastActiveLi.classList.remove("active");
-
-    const li = document.createElement("li");
-    li.className = evtClass(evt) + " active";
-    li.textContent = evtToInstr(evt);
-    ul.appendChild(li);
-    lastActiveLi = li;
-
-    instrCount += 1;
-    document.getElementById("counter").textContent = String(instrCount);
-
-    // Trim old items
-    while (ul.children.length > MAX_INSTR) {
-      ul.removeChild(ul.firstChild);
+        html += "</table>";
+        el.innerHTML = html;
     }
 
-    if (autoScroll) {
-      wrap.scrollTop = wrap.scrollHeight;
-    }
-  }
-
-  document.getElementById("btnClear").onclick = () => {
-    document.getElementById("instr").innerHTML = "";
-    instrCount = 0;
-    lastActiveLi = null;
-    document.getElementById("counter").textContent = "0";
-  };
-
-  loadState();
-  setStatus("Connected. Waiting for /mm call from PyTorch...");
-
-  const es = new EventSource("/events");
-  es.onmessage = (msg) => {
-    const evt = JSON.parse(msg.data);
-
-    // Always add a readable instruction line
-    addInstruction(evt);
-
-    if (evt.type === "input") {
-      hlA = hlB = hlR = null;
-      setStatus(`Input received: M=${evt.M} K=${evt.K} N=${evt.N}. Rendering (capped to ${cap}x${cap})...`);
-      loadState();
-      return;
+    async function loadState() {
+        const resp = await fetch("/state");
+        const js = await resp.json();
+        state = { ...js };
+        document.getElementById("aShape").textContent = js.a ? `(${js.a.shape[0]}x${js.a.shape[1]})` : "";
+        document.getElementById("bShape").textContent = js.b ? `(${js.b.shape[0]}x${js.b.shape[1]})` : "";
+        document.getElementById("rShape").textContent = js.result ? `(${js.result.shape[0]}x${js.result.shape[1]})` : "";
+        refreshVisuals();
     }
 
-    if (evt.type === "block_mul") {
-      const i = evt.i, j = evt.j, k = evt.k;
-      hlA = { r0: i, c0: k, h: 4, w: 4 };
-      hlB = { r0: k, c0: j, h: 4, w: 4 };
-      hlR = { r0: i, c0: j, h: 4, w: 4 };
-      setStatus(`Computing: A[${i}:${i+4},${k}:${k+4}] x B[${k}:${k+4},${j}:${j+4}] -> accumulate to C[${i}:${i+4},${j}:${j+4}]`);
-      renderMatrix(document.getElementById("a"), state.a, hlA);
-      renderMatrix(document.getElementById("b"), state.b, hlB);
-      renderMatrix(document.getElementById("r"), state.result, hlR);
-      return;
+    function refreshVisuals() {
+        renderMatrix(document.getElementById("a"), state.a, hlA);
+        renderMatrix(document.getElementById("b"), state.b, hlB);
+        renderMatrix(document.getElementById("r"), state.result, hlR);
     }
 
-    if (evt.type === "writeback") {
-      setStatus(`Writeback: C[${evt.i}:${evt.i+4},${evt.j}:${evt.j+4}]`);
-      loadState();
-      return;
+    function createPlan(M, K, N) {
+        const ul = document.getElementById("instr");
+        ul.innerHTML = "";
+        const addLi = (type, i, j, k, text, isHeader=false) => {
+            const li = document.createElement("li");
+            li.textContent = text;
+            li.id = `${type}-${i}-${j}-${k}`;
+            if (isHeader) li.className = "header";
+            ul.appendChild(li);
+        };
+
+        addLi("input", "", "", "", "Event: Receive Input (M=" + M + " K=" + K + " N=" + N + ")");
+        
+        for (let i = 0; i < M; i += 4) {
+            for (let j = 0; j < N; j += 4) {
+                addLi("head", i, j, "", `--- Compute Tile C[${i}:${i+4}, ${j}:${j+4}] ---`, true);
+                for (let k = 0; k < K; k += 4) {
+                    addLi("split", i, j, k, `  Split: Extract A[${i}:${i+4}, ${k}:${k+4}] and B[${k}:${k+4}, ${j}:${j+4}]`);
+                    addLi("feed", i, j, k, `  Feed: Pass blocks to calculation helper`);
+                    addLi("storage", i, j, k, `  Storage: Keep temporary dot product result`);
+                    addLi("accumulate", i, j, k, `  Accumulate: Add to local tile buffer`);
+                }
+                addLi("writeback", i, j, "", `Writeback: Flush local tile to Result[${i}:${i+4}, ${j}:${j+4}]`);
+            }
+        }
+        addLi("done", "", "", "", "Event: Matrix Multiplication Complete");
+        document.getElementById("counter").textContent = ul.children.length;
     }
 
-    if (evt.type === "done") {
-      setStatus("Done. Result updated.");
-      loadState();
-      return;
+    function highlightInstr(type, i, j, k) {
+        const id = `${type}-${i ?? ''}-${j ?? ''}-${k ?? ''}`;
+        const el = document.getElementById(id);
+        if (el) {
+            if (lastActiveLi) lastActiveLi.classList.remove("active");
+            el.classList.add("active");
+            el.classList.add("ok");
+            lastActiveLi = el;
+            if (document.getElementById("autoScroll").checked) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
     }
-  };
 
-  es.onerror = () => setStatus("SSE error/disconnected. Refresh page after server restarts.");
+    const es = new EventSource("/events");
+    es.onmessage = (msg) => {
+        const evt = JSON.parse(msg.data);
+        const { type, i, j, k } = evt;
+
+        if (type === "input") {
+            hlA = hlB = hlR = null;
+            createPlan(evt.M, evt.K, evt.N);
+            highlightInstr("input");
+            loadState();
+            return;
+        }
+
+        highlightInstr(type, i, j, k);
+
+        if (type === "split" || type === "feed") {
+            hlA = { r0: i, c0: k, h: 4, w: 4 };
+            hlB = { r0: k, c0: j, h: 4, w: 4 };
+            hlR = { r0: i, c0: j, h: 4, w: 4 };
+            refreshVisuals();
+        } else if (type === "writeback" || type === "done") {
+            loadState();
+        }
+    };
 </script>
 </body>
 </html>
